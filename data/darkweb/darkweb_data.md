@@ -6,6 +6,11 @@ You may need to supply redentials to this DB to run some queries.
 
 ## Queries on CrimeBB
 
+Create a dataset
+```bash
+psql -h localhost -U postgres  crimebb_dread --tuples-only -o datasets/2018-train < queries/ccc/2018-train.sql
+```
+
 ### Range of posts
 
 ```sql
