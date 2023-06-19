@@ -63,6 +63,11 @@ yarl = "==1.8.2"
 jupyter = "*"
 polars = "*"
 dask = "*"
+distributed = "*"
+duckdb = "*"
+psycopg2-binary = "*"
+seaborn = "*"
+plotnine = "*"
 
 [dev-packages]
 
