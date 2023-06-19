@@ -1,0 +1,3 @@
+[submodule "train/LUAR-LLNL"]
+	path = train/LUAR-LLNL
+	url = git@github.com:pranavmaneriker/LUAR-LLNL.git
