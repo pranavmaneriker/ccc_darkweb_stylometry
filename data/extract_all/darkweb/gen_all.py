@@ -19,7 +19,8 @@ cursor.execute("""SELECT
     array_agg(B.name) as board
 FROM posts P INNER JOIN boards B
 ON P.board_id = B.id
-GROUP BY creator, creator_id;
+GROUP BY creator, creator_id
+ORDER BY created_on;
 """)
 
 def convert_to_timestamps(arr):
