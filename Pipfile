@@ -68,6 +68,7 @@ duckdb = "*"
 psycopg2-binary = "*"
 seaborn = "*"
 plotnine = "*"
+plotnine-prism = "*"
 
 [dev-packages]
 

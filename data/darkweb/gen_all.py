@@ -22,9 +22,15 @@ ON P.board_id = B.id
 GROUP BY creator, creator_id;
 """)
 
+def convert_to_timestamps(arr):
+    return [int(x.timestamp()) for x in arr]
+
 with open(output_file, "w") as f:
     for result in  tqdm(cursor):
-        f.write(json.dumps(result, default=str))
+        all_res = dict(result)
+        all_res["created_on"] = convert_to_timestamps(all_res["created_on"])
+        all_res["updated_on"] = convert_to_timestamps(all_res["updated_on"])
+        f.write(json.dumps(all_res))
         f.write("\n")
 
 conn.close()
