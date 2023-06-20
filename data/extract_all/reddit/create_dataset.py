@@ -17,7 +17,10 @@ author_col = "author"
 non_auth_columns = ["id", "body", "subreddit", "created_utc"]
 min_count = 4
 max_count = 2000
+temp_file = os.path.join("~/temp/temp")
 
+all_cols = list(non_auth_columns)
+all_cols.append(author_col)
 # %%
 
 tablename = fname.replace("-", "_")
@@ -27,23 +30,17 @@ conn.execute("PRAGMA enable_progress_bar=true")
 
 
 # %%
-def is_sorted(l: List[int]) -> bool:
-    return all([l[i] <= l[i+1] for i in range(len(l) - 1)])
 
-duckdb.create_function("is_sorted", is_sorted)
-print("Creating Reddit 2018")
-print("Checking sorted")
-
-check_sorted_all = duckdb.sql(f"SELECT DISTINCT(sorted) FROM \
-                                 (SELECT is_sorted(LIST(created_utc)) AS sorted, {author_col} \
-                                 FROM {tablename} GROUP BY {author_col}) t")
-print("ALl sorted?", check_sorted_all)
 print("Creating table")
 sel_cols = ",".join([f"list({col}) as {col}" for col in non_auth_columns])
-all_rows = duckdb.sql(f"COPY (SELECT {sel_cols}, {author_col} FROM {tablename} GROUP BY {author_col}\
-                         HAVING len(list(id)) <= {max_count} \
-                      ) TO '/data/ccc/data/reddit_{tablename}' (FORMAT JSON)", 
-                      connection=conn)
+print("Sorting")
+conn.execute(f"PRAGMA memory_limit='90GB'")
+duckdb.sql(f"COPY (SELECT {','.join(all_cols)} FROM {tablename} ORDER BY created_utc) TO '{temp_file}' (FORMAT JSON);")
+print("Creating")
+duckdb.sql(f"COPY (SELECT {sel_cols}, {author_col} FROM read_json_auto('{temp_file}')\
+              GROUP BY {author_col} HAVING len(list(id)) <= {max_count} \
+           ) TO '/data/ccc/data/reddit_{tablename}' (FORMAT JSON)", 
+           connection=conn)
 
 # %% [markdown]
 # ***
@@ -56,16 +53,19 @@ def jsonl_gen(fname = "RC_2018-01",
               tablename= "RC_2019_01",
               author_col = "author",
               non_auth_columns = ["id", "body", "subreddit", "created_utc"],
-              max_memory="30GB"):
+              max_memory="90GB"):
     #table = duckdb.read_json(os.path.join(data_dir, fname))
     table = duckdb.read_parquet(os.path.join(data_dir, fname))
     conn = duckdb.register(tablename, table)
     conn.execute(f"PRAGMA memory_limit='{max_memory}'")
     conn.execute("PRAGMA enable_progress_bar=true")
+    print("Sorting")
+    duckdb.sql(f"COPY (SELECT * FROM {tablename} ORDER BY created_utc) TO '{temp_file}' (FORMAT JSON);", 
+               connection=conn)
+    print("Generating")
     sel_cols = ",".join([f"list({col}) as {col}" for col in non_auth_columns])
-    all_rows = duckdb.sql(f"COPY (SELECT {sel_cols}, {author_col} FROM {tablename} GROUP BY {author_col} \
-                            HAVING len(list(id)) <= {max_count} \
-                            ORDER BY created_utc) \
+    all_rows = duckdb.sql(f"COPY (SELECT {sel_cols}, {author_col} FROM read_json_auto('{temp_file}') GROUP BY {author_col} \
+                            HAVING len(list(id)) <= {max_count}) \
                            TO '/data/ccc/data/reddit_{tablename}' (FORMAT JSON)"
                           , connection=conn)
 
