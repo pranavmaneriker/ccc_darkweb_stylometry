@@ -14,8 +14,8 @@ verify_ssl = true
 name = "downloadpytorch"
 
 [packages]
-torch = "==1.13.1"
-torchvision = "==0.14.1"
+torch = {verison = "==1.13.1", index="pytorch"}
+torchvision = {version="==0.14.1", index="pytorch"}
 torchmetrics = "==0.11.0"
 ipython = "*"
 absl-py = "==1.2.0"
