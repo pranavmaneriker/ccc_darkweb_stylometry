@@ -26,17 +26,18 @@ class SelfAttention(nn.Module):
 class Transformer(nn.Module):
     """Defines the UAR Transformer-based model.
     """
-    def __init__(self):
+    def __init__(self, base_path, batched_eps=False):
         super(Transformer, self).__init__()
 
-        self.create_transformer()
+        self.create_transformer(base_path)
         self.attn_fn = SelfAttention()
         self.linear = nn.Linear(768, 512)
+        self.cbatched = batched_eps # custom batching for parallelization
         
-    def create_transformer(self):
+    def create_transformer(self, base_path):
         """Creates the transformer model.
         """
-        model_path = os.path.join(transformer_path, "paraphrase-distilroberta-base-v1")
+        model_path = os.path.join(base_path, "paraphrase-distilroberta-base-v1")
         self.transformer = AutoModel.from_pretrained(model_path)
 
     def mean_pooling(self, token_embeddings, attention_mask):
@@ -56,6 +57,7 @@ class Transformer(nn.Module):
         """Computes the Author Embedding. 
         """
         input_ids, attention_mask = text[0], text[1]
+
         B, N, E, _ = input_ids.shape
         
         input_ids = rearrange(input_ids, 'b n e l -> (b n e) l')
@@ -75,7 +77,7 @@ class Transformer(nn.Module):
 
         # calculate episode embedding:
         episode_embedding = reduce(self.attn_fn(comment_embedding, comment_embedding, comment_embedding), 
-                                   'b e l -> b l', 'max')
+                                      'b e l -> b l', 'max')
         episode_embedding = self.linear(episode_embedding)
 
         out = {

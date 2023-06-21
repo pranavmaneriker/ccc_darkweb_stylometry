@@ -4,7 +4,9 @@ import json
 
 import pandas as pd
 import torch
-from torch.utils.data import Dataset
+import torch.nn as nn
+from torch.nn import functional as F
+from torch.utils.data import Dataset, DataLoader
 from transformers import AutoTokenizer
 from tqdm import tqdm
 import numpy as np
@@ -13,7 +15,6 @@ from luar_model import Transformer as LUARTransformer
 from metrics import retrieval
 
 
-transformer_path = "/exp/scale22/data_luar/pretrained_weights"
 RANDOM_NUM = 42
 
 class JSONLDataset(Dataset):
@@ -47,23 +48,48 @@ class JSONLDataset(Dataset):
         data = [tokenized_text["input_ids"], tokenized_text["attention_mask"]] 
         # (batch_size, num_samples_per_author, num_text_per_episode, max_length)
         # batching is done in the dataloader
-        data[0] = data[0].reshape(1, num_samples_per_author, num_texts_per_episode, self.max_tokenizer_len)
-        data[1] = data[1].reshape(1, num_samples_per_author, num_texts_per_episode, self.max_tokenizer_len)
-        return data, author_idx
-    
 
-def run_evaluation(model, query_ds, target_ds, n_jobs,  is_cuda=False):
+        data = [d.reshape(num_samples_per_author, num_texts_per_episode, self.max_tokenizer_len) for d in data]
+        #data[0] = data[0].reshape(1, num_samples_per_author, num_texts_per_episode, self.max_tokenizer_len)
+        #data[1] = data[1].reshape(1, num_samples_per_author, num_texts_per_episode, self.max_tokenizer_len)
+        return data, torch.tensor([author_idx])
+    
+def collate_fn(batch):
+        data, author = zip(*batch)
+
+        author = torch.stack(author)
+
+        # Minimum number of posts for an author history in batch
+        #min_posts = min([d[0].shape[1] for d in data])
+        # max number of episodes across all authors in batch
+        max_posts = max([d[0].shape[1] for d in data])
+        # If min_posts < episode length, need to subsample
+        #if min_posts < 16:
+        #    data = [torch.stack([f[:, :min_posts, :] for f in feature])
+        #            for feature in zip(*data)]
+        ## Otherwise, stack data as is
+        #else:
+        #    data = [torch.stack([f for f in feature])
+        #            for feature in zip(*data)]
+        
+        #pad right all features to max epsiode len 
+        data = [torch.stack([F.pad(f, (0, 0, 0, max_posts - f.shape[1]), "constant", 0) for f in feature])
+                for feature in zip(*data)]
+        return data, author
+
+def run_evaluation(model, query_ds, target_ds, n_jobs,  batch_size=32, is_cuda=False, is_dp=False):
     def embed_ds(ds, name="query"):
         authors, embs = [], []
+        dl = DataLoader(ds, batch_size=batch_size, collate_fn=collate_fn, pin_memory=True, num_workers=12)
         with torch.no_grad():
             model.eval()
-            for data, auth_idx in tqdm(ds, desc=f"Embedding {name}"):
+            # for data, auth_idx in tqdm(ds, desc=f"Embedding {name}"):
+            for data, auth_idx in tqdm(dl):
                 if is_cuda:
-                    data[0] = data[0].to("cuda:0")
-                    data[1] = data[1].to("cuda:0")
+                    data = [d.to("cuda:0") for d in data]
                 emb = model(data)
-                embs.append(emb["episode_embedding"].squeeze().cpu().numpy())
-                authors.append(auth_idx)
+                embs.extend(emb["episode_embedding"].squeeze().cpu().numpy())
+                authors.extend(auth_idx.squeeze().cpu().numpy())
             authors = np.array(authors)
             embs = np.array(embs)
         return embs, authors
@@ -88,8 +114,9 @@ if __name__ == "__main__":
     p.add_argument("--author_key", type=str, default="author")
     p.add_argument("--text_key", type=str, default="body")
     p.add_argument("--use_cuda", action="store_true")
+    p.add_argument("--use_dp", action="store_true", help="Use data parallel")
     p.add_argument("--tokens_per_comment", type=int, default=32)
-    p.add_argument("--gpu", type=int, default=0)
+    p.add_argument("--batch_size", default=1, type=int)
     p.add_argument("--model", choices=["luar"], default="luar")
     args = p.parse_args()
     args_dict = vars(args)
@@ -107,18 +134,22 @@ if __name__ == "__main__":
     tokenizer_path = args.tokenizer_path
     tokens_per_comment = args.tokens_per_comment
     use_cuda = args.use_cuda
+    batch_size = args.batch_size
     model_type = args.model
+    use_dp = args.use_dp
 
     if model_type == "luar":
-        model = LUARTransformer()
+        model = LUARTransformer(args.tokenizer_path)
 
         # load weights
         state_dict = torch.load(checkpoint_path)
         model.load_state_dict(state_dict, strict=True)
         # for CUDA:
         if use_cuda:
-            # TODO support multi gpu inference
-            model.to(f"cuda:{args.gpu}")
+            if use_dp:
+                model = nn.DataParallel(model)
+            model.to(f"cuda:0")
+
 
         tokenizer = AutoTokenizer.from_pretrained(
             os.path.join(tokenizer_path, "paraphrase-distilroberta-base-v1")
@@ -144,7 +175,7 @@ if __name__ == "__main__":
     query_ds = JSONLDataset(query_df, *args_ds)
     target_ds = JSONLDataset(target_df, *args_ds)
 
-    eval_results, authorwise_results_ind = run_evaluation(model, query_ds, target_ds, n_jobs, use_cuda)
+    eval_results, authorwise_results_ind = run_evaluation(model, query_ds, target_ds, n_jobs, batch_size, use_cuda, use_dp)
     idx2auth = {ind: auth for auth, ind in author2idx.items()}
     authorwise_results = {idx2auth[ind]: rank for ind, rank in authorwise_results_ind}
     
@@ -153,7 +184,7 @@ if __name__ == "__main__":
         "results": eval_results,
         "authorwise_results": authorwise_results
     }
-    with open(output_file, 'a') as f:
+    with open(output_file, 'w') as f:
         json.dump(full_output, f, indent=2)
 
     print(f'output_file={output_file}')

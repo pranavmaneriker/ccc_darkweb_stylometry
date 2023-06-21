@@ -129,7 +129,7 @@ def calculate_author_search_metrics(D, query_authors, target_authors, D_target_a
             labels_in_sorted_order = target_authors[D_target_author_indices[query_index,indices_in_sorted_order]]
         else:
             labels_in_sorted_order = target_authors[indices_in_sorted_order]
-        rank = np.where(labels_in_sorted_order == author)
+        rank = np.where(labels_in_sorted_order == author)[0]
         # if the author isn't in the top-k, then rank is very large?
         if len(rank) == 1:
             rank = rank[0] + 1.

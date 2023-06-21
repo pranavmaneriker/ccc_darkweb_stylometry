@@ -69,6 +69,8 @@ psycopg2-binary = "*"
 seaborn = "*"
 plotnine = "*"
 plotnine-prism = "*"
+faiss-gpu = "*"
+ipdb = "*"
 
 [dev-packages]
 
