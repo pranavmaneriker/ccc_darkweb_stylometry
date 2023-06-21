@@ -102,7 +102,7 @@ def ComputeErrorRates(scores, labels):
       return fnrs, fprs, thresholds
 
 
-def calculate_author_search_metrics(D, query_authors, target_authors, D_target_author_indices=None):
+def calculate_author_search_metrics(D, query_authors, target_authors, D_target_author_indices=None, topk=8):
     if isinstance(query_authors, list):
         query_authors = np.array(query_authors)
     if isinstance(target_authors, list):
@@ -119,7 +119,7 @@ def calculate_author_search_metrics(D, query_authors, target_authors, D_target_a
     num_queries = query_authors.shape[0]
     ranks = np.zeros((num_queries), dtype=np.int32)
     reciprocal_ranks = np.zeros((num_queries), dtype=np.float32)
-    
+    nearest_topk = {}    
     for query_index in xrange(num_queries):
         author = query_authors[query_index]
         distances = D[query_index]
@@ -130,10 +130,12 @@ def calculate_author_search_metrics(D, query_authors, target_authors, D_target_a
         else:
             labels_in_sorted_order = target_authors[indices_in_sorted_order]
         rank = np.where(labels_in_sorted_order == author)[0]
+        nearest_topk[author] = labels_in_sorted_order[:topk].tolist()
         # if the author isn't in the top-k, then rank is very large?
         if len(rank) == 1:
             rank = rank[0] + 1.
         else:
+            raise ValueError
             rank = 1_000_000 + 1.
         ranks[query_index] = rank
         reciprocal_rank = 1.0 / float(rank)
@@ -155,7 +157,11 @@ def calculate_author_search_metrics(D, query_authors, target_authors, D_target_a
         'num_queries': num_queries,
         'num_targets': target_authors.shape[0]
     }
-    authorwise_results = list(zip(query_authors.tolist(), ranks.tolist()))
+    authorwise_results = {
+        "ranks": list(zip(query_authors.tolist(), ranks.tolist())),
+        "nearest_topk": nearest_topk
+    }
+
     # make sure it's 
     return {k: float(v) if not 'num_' in k else int(v)
             for k, v in result.items()}, authorwise_results

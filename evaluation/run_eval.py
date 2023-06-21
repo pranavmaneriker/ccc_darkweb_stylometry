@@ -88,8 +88,13 @@ def run_evaluation(model, query_ds, target_ds, n_jobs,  batch_size=32, is_cuda=F
                 if is_cuda:
                     data = [d.to("cuda:0") for d in data]
                 emb = model(data)
-                embs.extend(emb["episode_embedding"].squeeze().cpu().numpy())
-                authors.extend(auth_idx.squeeze().cpu().numpy())
+                if emb["episode_embedding"].shape == (1, 512):
+                    embs.append(emb["episode_embedding"].squeeze().cpu().numpy())
+                    authors.append(auth_idx.squeeze().cpu().numpy())
+                else:
+                    embs.extend(emb["episode_embedding"].squeeze().cpu().numpy())
+                    authors.extend(auth_idx.squeeze().cpu().numpy())
+
             authors = np.array(authors)
             embs = np.array(embs)
         return embs, authors
@@ -177,12 +182,15 @@ if __name__ == "__main__":
 
     eval_results, authorwise_results_ind = run_evaluation(model, query_ds, target_ds, n_jobs, batch_size, use_cuda, use_dp)
     idx2auth = {ind: auth for auth, ind in author2idx.items()}
-    authorwise_results = {idx2auth[ind]: rank for ind, rank in authorwise_results_ind}
+    authorwise_results = {idx2auth[ind]: rank for ind, rank in authorwise_results_ind["ranks"]}
+    topk_results = {idx2auth[idx]: [idx2auth[n_idx] for n_idx in n_idxs] 
+                    for idx, n_idxs in authorwise_results_ind["nearest_topk"].items()}
     
     full_output = {
         "args": args_dict,
         "results": eval_results,
-        "authorwise_results": authorwise_results
+        "authorwise_results": authorwise_results,
+        "topk_results": topk_results
     }
     with open(output_file, 'w') as f:
         json.dump(full_output, f, indent=2)
