@@ -123,6 +123,7 @@ if __name__ == "__main__":
     p.add_argument("--tokens_per_comment", type=int, default=32)
     p.add_argument("--batch_size", default=1, type=int)
     p.add_argument("--model", choices=["luar"], default="luar")
+    p.add_argument("--from_lightning", action="store_true")
     args = p.parse_args()
     args_dict = vars(args)
 
@@ -148,6 +149,8 @@ if __name__ == "__main__":
 
         # load weights
         state_dict = torch.load(checkpoint_path)
+        if args.from_lightning:
+            state_dict = state_dict["state_dict"]
         model.load_state_dict(state_dict, strict=True)
         # for CUDA:
         if use_cuda:
